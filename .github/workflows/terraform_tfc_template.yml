@@ -1,0 +1,86 @@
+name: Terraform Plan, Stage & Apply (TFC)
+
+on:
+  workflow_call:
+    inputs:
+      terraform_dir:
+        required: true
+        type: string
+      tfvars_file:
+        required: true
+        type: string
+      run_apply:
+        required: false
+        type: boolean
+        default: false
+
+    secrets:
+      TF_API_TOKEN:
+        required: true  # 👈 Terraform Cloud user API token
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    name: Terraform Plan (TFC)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.6.6
+
+      - name: Terraform Init
+        working-directory: ${{ inputs.terraform_dir }}
+        run: terraform init
+        env:
+          TF_TOKEN_app_terraform_io: ${{ secrets.TF_API_TOKEN }}
+
+      - name: Terraform Plan (TFC)
+        working-directory: ${{ inputs.terraform_dir }}
+        run: terraform plan -input=false -var-file="${{ inputs.tfvars_file }}"
+        env:
+          TF_TOKEN_app_terraform_io: ${{ secrets.TF_API_TOKEN }}
+
+  stage:
+    name: Approval (Stage)
+    if: ${{ github.ref == 'refs/heads/main' && inputs.run_apply }}
+    needs: plan
+    runs-on: ubuntu-latest
+    environment:
+      name: manual-approval
+    steps:
+      - name: Wait for approval
+        run: echo "Approved. Proceeding to apply..."
+
+  apply:
+    name: Terraform Apply (TFC)
+    if: ${{ github.ref == 'refs/heads/main' && inputs.run_apply }}
+    needs: stage
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.6.6
+
+      - name: Terraform Init
+        working-directory: ${{ inputs.terraform_dir }}
+        run: terraform init
+        env:
+          TF_TOKEN_app_terraform_io: ${{ secrets.TF_API_TOKEN }}
+
+      - name: Terraform Apply (TFC)
+        working-directory: ${{ inputs.terraform_dir }}
+        run: terraform apply -auto-approve -var-file="${{ inputs.tfvars_file }}"
+        env:
+          TF_TOKEN_app_terraform_io: ${{ secrets.TF_API_TOKEN }}
